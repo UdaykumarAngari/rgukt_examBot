@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from telegram import Bot
 from flask import Flask
 from threading import Thread
+from prettytable import PrettyTable  # for readable table in logs
 
 # --- Configuration ---
 BOT_TOKEN = os.environ['BOT_TOKEN']
@@ -13,14 +14,13 @@ GROUP_CHAT_ID = int(os.environ['GROUP_CHAT_ID'])
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 STORAGE_FILE = "sent_notices.json"
 
-# --- Set DEBUG_MODE to True for safe testing (prints messages instead of sending) ---
+# Set DEBUG_MODE = True for safe testing (prints messages instead of sending)
 DEBUG_MODE = True
 
 bot = Bot(token=BOT_TOKEN)
 
-# --- Flask app to keep Render service alive ---
+# --- Flask app for Render keep-alive ---
 app = Flask(__name__)
-
 @app.route("/")
 def home():
     return "Exam Bot is running 🚀"
@@ -39,7 +39,7 @@ def save_seen_notices():
     with open(STORAGE_FILE, "w") as f:
         json.dump(list(seen_notices), f, indent=2)
 
-# --- Scrape notices ---
+# --- Scraper for current RGUKT notice page ---
 def scrape_notices():
     try:
         resp = requests.get(NOTICE_URL)
@@ -51,21 +51,33 @@ def scrape_notices():
     soup = BeautifulSoup(resp.text, "html.parser")
     notices_list = []
 
-    for div in soup.find_all("div", class_="panel panel-default"):
-        title_tag = div.find("h4")
+    card_headers = soup.find_all("div", class_="card-header")
+    print(f"[DEBUG] Found {len(card_headers)} card headers")
+
+    for header in card_headers:
+        title_tag = header.find("a", class_="card-link")
         if not title_tag:
             continue
-        title = title_tag.text.strip()
+        title = title_tag.get_text(strip=True)
+        print(f"[DEBUG] Found title: {title}")
         if "Examination" not in title:
             continue
-        link_tag = div.find("a", string="Download: Notice Attachment")
-        if not link_tag:
-            link_tag = div.find("a", string="Click Here")
-        url = link_tag["href"] if link_tag else NOTICE_URL
+
+        collapse_div = header.find_next_sibling("div", class_="collapse")
+        body_text = ""
+        url = NOTICE_URL  # fallback
+        if collapse_div:
+            body_div = collapse_div.find("div", class_="card-body")
+            body_text = body_div.get_text(strip=True) if body_div else ""
+            link_tag = body_div.find("a", string="Here") if body_div else None
+            if link_tag:
+                url = link_tag.get("href", NOTICE_URL)
+
         notice_id = title + "|" + url
         notices_list.append((notice_id, title, url))
 
-    return notices_list[:10]  # newest 10 for first run
+    print(f"[DEBUG] Scraped {len(notices_list)} notices containing 'Examination'")
+    return notices_list[:10]  # latest 10
 
 # --- Broadcast notice ---
 def broadcast_notice(title, url, send=not DEBUG_MODE):
@@ -84,9 +96,19 @@ def broadcast_notice(title, url, send=not DEBUG_MODE):
 def run_bot():
     print("🚀 Bot is starting...")
 
-    # Post last 10 notices on first run
+    # --- Scrape last 10 notices ---
     last_10 = scrape_notices()
-    for notice_id, title, url in reversed(last_10):  # oldest first
+
+    # --- Print readable table of last 10 notices ---
+    table = PrettyTable()
+    table.field_names = ["Index", "Title", "URL"]
+    for idx, (notice_id, title, url) in enumerate(reversed(last_10), 1):  # oldest first
+        table.add_row([idx, title, url])
+    print("📄 Last 10 scraped exam notices:")
+    print(table)
+
+    # --- Process notices normally ---
+    for notice_id, title, url in reversed(last_10):
         if notice_id not in seen_notices:
             broadcast_notice(title, url)
             seen_notices.add(notice_id)
@@ -109,10 +131,8 @@ def run_bot():
 
 # --- Run Flask and Bot ---
 if __name__ == "__main__":
-    # Run bot in background thread
     bot_thread = Thread(target=run_bot)
     bot_thread.start()
 
-    # Run Flask app for Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
