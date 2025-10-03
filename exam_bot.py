@@ -3,6 +3,7 @@ import json
 import time
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 from telegram import Bot
 from flask import Flask
 from threading import Thread
@@ -14,8 +15,8 @@ GROUP_CHAT_ID = int(os.environ['GROUP_CHAT_ID'])
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 STORAGE_FILE = "sent_notices.json"
 
-# Set DEBUG_MODE = True for safe testing (prints messages instead of sending)
-DEBUG_MODE = True
+# Live mode
+DEBUG_MODE = False  # False → send messages to Telegram
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -58,11 +59,14 @@ def scrape_notices():
         title_tag = header.find("a", class_="card-link")
         if not title_tag:
             continue
-        title = title_tag.get_text(strip=True)
-        print(f"[DEBUG] Found title: {title}")
-        if "Examination" not in title:
+        title = title_tag.get_text()
+        title_clean = title.strip().replace("\n", " ").replace("\r", " ")
+
+        # Only include exam notices (case-insensitive)
+        if "examination" not in title_clean.lower():
             continue
 
+        # Get collapse body
         collapse_div = header.find_next_sibling("div", class_="collapse")
         body_text = ""
         url = NOTICE_URL  # fallback
@@ -71,10 +75,11 @@ def scrape_notices():
             body_text = body_div.get_text(strip=True) if body_div else ""
             link_tag = body_div.find("a", string="Here") if body_div else None
             if link_tag:
-                url = link_tag.get("href", NOTICE_URL)
+                # Handle relative URLs
+                url = urljoin(NOTICE_URL, link_tag.get("href", NOTICE_URL))
 
-        notice_id = title + "|" + url
-        notices_list.append((notice_id, title, url))
+        notice_id = title_clean + "|" + url
+        notices_list.append((notice_id, title_clean, url))
 
     print(f"[DEBUG] Scraped {len(notices_list)} notices containing 'Examination'")
     return notices_list[:10]  # latest 10
@@ -104,7 +109,7 @@ def run_bot():
     table.field_names = ["Index", "Title", "URL"]
     for idx, (notice_id, title, url) in enumerate(reversed(last_10), 1):  # oldest first
         table.add_row([idx, title, url])
-    print("📄 Last 10 scraped exam notices:")
+    print("📄 Last 10 scraped examination notices:")
     print(table)
 
     # --- Process notices normally ---
