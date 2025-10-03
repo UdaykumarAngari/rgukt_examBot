@@ -3,9 +3,10 @@ from bs4 import BeautifulSoup
 import time
 from telegram import Bot
 
-# 🔑 Your bot details
-BOT_TOKEN = "1079829863:AAHEEEocjDQev462BAtflyY782cPLtHNca8"
-GROUP_CHAT_ID = -1003133538365  # 👉 replace with your real chat_id
+import os
+
+BOT_TOKEN = os.environ['BOT_TOKEN']
+GROUP_CHAT_ID = int(os.environ['GROUP_CHAT_ID']) # 👉 replace with your real chat_id
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 
 bot = Bot(token=BOT_TOKEN)
