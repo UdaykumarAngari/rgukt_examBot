@@ -16,7 +16,7 @@ NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 STORAGE_FILE = "sent_notices.json"
 
 # Live mode
-DEBUG_MODE = False  # False → send messages to Telegram
+DEBUG_MODE = True  # False → send messages to Telegram
 
 bot = Bot(token=BOT_TOKEN)
 
