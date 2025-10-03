@@ -5,12 +5,16 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
 from flask import Flask
+from threading import Thread
 
-# --- Environment Variables ---
+# --- Configuration ---
 BOT_TOKEN = os.environ['BOT_TOKEN']
 GROUP_CHAT_ID = int(os.environ['GROUP_CHAT_ID'])
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 STORAGE_FILE = "sent_notices.json"
+
+# --- Set DEBUG_MODE to True for safe testing (prints messages instead of sending) ---
+DEBUG_MODE = True
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -37,11 +41,16 @@ def save_seen_notices():
 
 # --- Scrape notices ---
 def scrape_notices():
-    resp = requests.get(NOTICE_URL)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+    try:
+        resp = requests.get(NOTICE_URL)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch notices: {e}")
+        return []
 
+    soup = BeautifulSoup(resp.text, "html.parser")
     notices_list = []
+
     for div in soup.find_all("div", class_="panel panel-default"):
         title_tag = div.find("h4")
         if not title_tag:
@@ -55,15 +64,21 @@ def scrape_notices():
         url = link_tag["href"] if link_tag else NOTICE_URL
         notice_id = title + "|" + url
         notices_list.append((notice_id, title, url))
+
     return notices_list[:10]  # newest 10 for first run
 
 # --- Broadcast notice ---
-def broadcast_notice(title, url):
+def broadcast_notice(title, url, send=not DEBUG_MODE):
     message = f"📢 *Exam Notice:*\n\n{title}\n🔗 {url}"
-    try:
-        bot.send_message(GROUP_CHAT_ID, message, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Error sending message: {e}")
+    if send:
+        try:
+            bot.send_message(GROUP_CHAT_ID, message, parse_mode="Markdown")
+        except Exception as e:
+            print(f"[ERROR] Sending message failed: {e}")
+    else:
+        print("[DEBUG] Message ready to send:")
+        print(message)
+        print("-" * 50)
 
 # --- Main bot logic ---
 def run_bot():
@@ -77,7 +92,7 @@ def run_bot():
             seen_notices.add(notice_id)
             time.sleep(1)
     save_seen_notices()
-    print("✅ Initial 10 notices posted.")
+    print("✅ Initial 10 notices processed.")
 
     # Continuous monitoring
     while True:
@@ -89,13 +104,11 @@ def run_bot():
                     seen_notices.add(notice_id)
             save_seen_notices()
         except Exception as e:
-            print(f"Error during monitoring: {e}")
+            print(f"[ERROR] During monitoring: {e}")
         time.sleep(300)  # check every 5 minutes
 
 # --- Run Flask and Bot ---
 if __name__ == "__main__":
-    from threading import Thread
-
     # Run bot in background thread
     bot_thread = Thread(target=run_bot)
     bot_thread.start()
