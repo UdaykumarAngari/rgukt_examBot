@@ -1,0 +1,2 @@
+#url for testing the channel msgs
+url: https://api.telegram.org/bot8079829863:AAHEEEocjDQev462BAtflyY782cPLtHNca8/getUpdates

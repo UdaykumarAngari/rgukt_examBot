@@ -1,3 +1,4 @@
 .Testing/
 requirements.txt
-sent_notices.json
+assets\notice_bot_logo.jpg
+api_calling.txt
