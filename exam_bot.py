@@ -13,8 +13,8 @@ from flask import Flask
 from prettytable import PrettyTable
 
 # --- Configuration ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # set in Render secrets
-GROUP_CHAT_ID = int(os.environ.get("GROUP_CHAT_ID"))  # your Telegram group/channel
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+GROUP_CHAT_ID = int(os.environ.get("GROUP_CHAT_ID"))
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 STORAGE_FILE = "sent_notices.json"
 
@@ -83,16 +83,36 @@ def scrape_last_10_notices():
         if not title_tag:
             continue
         title = title_tag.get_text(strip=True)
-        if "examination" not in title.lower():
+        title_lower = title.lower()
+        if "examination" not in title_lower and "external" not in title_lower and "internal" not in title_lower:
             continue
 
         collapse_div = header.find_next_sibling("div", class_="collapse")
         body_div = collapse_div.find("div", class_="card-body") if collapse_div else None
         attachment_url, external_url = extract_notice_links(body_div)
-        notice_id = f"{title}|{external_url}|{attachment_url}"
-        notices.append((notice_id, title, external_url, attachment_url))
 
-    return notices[:10]  # latest 10
+        # Extract date from body text
+        date = None
+        if body_div:
+            text = body_div.get_text()
+            # Try YYYY-MM-DD format
+            match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
+            if match:
+                date = match.group(1)
+            else:
+                # Try DD-MM-YYYY or DD/MM/YYYY
+                match = re.search(r'\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b', text)
+                if match:
+                    d, m, y = match.groups()
+                    date = f"{y}-{int(m):02d}-{int(d):02d}"
+
+        notice_id = f"{title}|{external_url}|{attachment_url}"
+        notices.append((notice_id, title, external_url, attachment_url, date))
+
+    # Sort by date ascending (oldest first), notices without date at the end
+    notices.sort(key=lambda x: x[4] if x[4] else '9999-99-99')
+
+    return notices[:10]  # latest 10, now sorted
 
 # --- Build Telegram message ---
 def build_message(title, external_url, attachment_url):
@@ -117,13 +137,13 @@ async def run_bot():
     # --- PrettyTable for logs ---
     table = PrettyTable()
     table.field_names = ["Index", "Title", "URL", "Attachment"]
-    for idx, (notice_id, title, external, attachment) in enumerate(reversed(last_10), 1):
+    for idx, (notice_id, title, external, attachment, _) in enumerate(last_10, 1):
         table.add_row([idx, title, external or "-", attachment or "-"])
-    print("📄 Last 10 scraped examination notices:")
+    print("📄 Last 10 scraped examination notices (sorted by date):")
     print(table)
 
     # --- Send last 10 notices ---
-    for notice_id, title, external, attachment in reversed(last_10):
+    for notice_id, title, external, attachment, _ in last_10:
         if notice_id not in seen_notices:
             msg = build_message(title, external, attachment)
             print("[DEBUG] Message ready to send:\n", msg)
@@ -144,7 +164,7 @@ async def run_bot():
     while True:
         try:
             current_notices = scrape_last_10_notices()
-            for notice_id, title, external, attachment in current_notices:
+            for notice_id, title, external, attachment, _ in current_notices:
                 if notice_id not in seen_notices:
                     msg = build_message(title, external, attachment)
                     print("[DEBUG] New notice ready:\n", msg)
@@ -158,7 +178,7 @@ async def run_bot():
                     except Exception as e:
                         print(f"[ERROR] Failed to send message: {e}")
                     seen_notices.add(notice_id)
-            save_seen_notices(seen_notices)
+                    save_seen_notices(seen_notices)  # Save after each new notice
         except Exception as e:
             print(f"[ERROR] During monitoring: {e}")
         await asyncio.sleep(60)  # check every 1 minute
