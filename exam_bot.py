@@ -11,14 +11,21 @@ from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
 from flask import Flask
 from prettytable import PrettyTable
+from dotenv import load_dotenv
+
+
+#The comments are written at each for easy understanding and future reference @udaykumar_angari
+
+# --- Load environment variables early ---
+load_dotenv()
 
 # --- Configuration ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GROUP_CHAT_ID = int(os.environ.get("GROUP_CHAT_ID"))
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # from .env file
+GROUP_CHAT_ID = int(os.environ.get("GROUP_CHAT_ID"))  # from .env file
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 STORAGE_FILE = "sent_notices.json"
 
-# --- Flask app for Render keep-alive ---
+# --- Flask app for keep-alive ---
 app = Flask(__name__)
 @app.route("/")
 def home():
@@ -40,7 +47,7 @@ def save_seen_notices(seen_notices):
     with open(STORAGE_FILE, "w") as f:
         json.dump(list(seen_notices), f, indent=2)
 
-# --- Scraping functions ---
+# --- Scraping helpers ---
 def extract_notice_links(body_div):
     attachment_url = None
     external_url = None
@@ -83,38 +90,18 @@ def scrape_last_10_notices():
         if not title_tag:
             continue
         title = title_tag.get_text(strip=True)
-        title_lower = title.lower()
-        if "examination" not in title_lower and "external" not in title_lower and "internal" not in title_lower:
+        if "examination" not in title.lower():
             continue
 
         collapse_div = header.find_next_sibling("div", class_="collapse")
         body_div = collapse_div.find("div", class_="card-body") if collapse_div else None
         attachment_url, external_url = extract_notice_links(body_div)
-
-        # Extract date from body text
-        date = None
-        if body_div:
-            text = body_div.get_text()
-            # Try YYYY-MM-DD format
-            match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
-            if match:
-                date = match.group(1)
-            else:
-                # Try DD-MM-YYYY or DD/MM/YYYY
-                match = re.search(r'\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b', text)
-                if match:
-                    d, m, y = match.groups()
-                    date = f"{y}-{int(m):02d}-{int(d):02d}"
-
         notice_id = f"{title}|{external_url}|{attachment_url}"
-        notices.append((notice_id, title, external_url, attachment_url, date))
+        notices.append((notice_id, title, external_url, attachment_url))
 
-    # Sort by date ascending (oldest first), notices without date at the end
-    notices.sort(key=lambda x: x[4] if x[4] else '9999-99-99')
+    return notices[:10]  # latest 10
 
-    return notices[:10]  # latest 10, now sorted
-
-# --- Build Telegram message ---
+# --- Telegram message builder ---
 def build_message(title, external_url, attachment_url):
     title = escape_markdown(title, version=2)
     attachment_url = escape_markdown(attachment_url, version=2) if attachment_url else None
@@ -122,12 +109,14 @@ def build_message(title, external_url, attachment_url):
 
     if attachment_url and external_url:
         return f"{title}\nURL: {external_url}\nNotice Attachment: {attachment_url}"
-    else:
+    elif external_url or attachment_url:
         return f"{title}\nURL: {external_url or attachment_url}"
+    else:
+        return f"{title}\nURL: www\.hub\.rgukt\.ac\.in/notice/index"
 
-# --- Async bot runner ---
+# --- Bot runner ---
 async def run_bot():
-    print("🚀 Exam Bot starting...")
+    print("Exam Bot starting...")
     app_instance = Application.builder().token(BOT_TOKEN).build()
     seen_notices = load_seen_notices()
 
@@ -137,13 +126,13 @@ async def run_bot():
     # --- PrettyTable for logs ---
     table = PrettyTable()
     table.field_names = ["Index", "Title", "URL", "Attachment"]
-    for idx, (notice_id, title, external, attachment, _) in enumerate(last_10, 1):
+    for idx, (notice_id, title, external, attachment) in enumerate(reversed(last_10), 1):
         table.add_row([idx, title, external or "-", attachment or "-"])
-    print("📄 Last 10 scraped examination notices (sorted by date):")
+    print("Last 10 scraped examination notices:")
     print(table)
 
     # --- Send last 10 notices ---
-    for notice_id, title, external, attachment, _ in last_10:
+    for notice_id, title, external, attachment in reversed(last_10):
         if notice_id not in seen_notices:
             msg = build_message(title, external, attachment)
             print("[DEBUG] Message ready to send:\n", msg)
@@ -158,13 +147,13 @@ async def run_bot():
                 print(f"[ERROR] Failed to send message: {e}")
             seen_notices.add(notice_id)
     save_seen_notices(seen_notices)
-    print("✅ Initial 10 notices processed.")
+    print("Initial 10 notices processed.")
 
     # --- Continuous monitoring ---
     while True:
         try:
             current_notices = scrape_last_10_notices()
-            for notice_id, title, external, attachment, _ in current_notices:
+            for notice_id, title, external, attachment in current_notices:
                 if notice_id not in seen_notices:
                     msg = build_message(title, external, attachment)
                     print("[DEBUG] New notice ready:\n", msg)
@@ -178,7 +167,7 @@ async def run_bot():
                     except Exception as e:
                         print(f"[ERROR] Failed to send message: {e}")
                     seen_notices.add(notice_id)
-                    save_seen_notices(seen_notices)  # Save after each new notice
+            save_seen_notices(seen_notices)
         except Exception as e:
             print(f"[ERROR] During monitoring: {e}")
         await asyncio.sleep(60)  # check every 1 minute
