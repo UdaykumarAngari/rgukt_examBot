@@ -14,7 +14,7 @@ from prettytable import PrettyTable
 from dotenv import load_dotenv
 
 
-#The comments are written at each for easy understanding and for future reference @udaykumar_angari
+#The comments are written at each level for easy understanding and for future reference @udaykumar_angari
 
 # --- Load environment variables early ---
 load_dotenv()
