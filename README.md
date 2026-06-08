@@ -54,12 +54,12 @@ The application provides a **centralized and reliable notification system** for 
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```text
 rgukt_examBot/
 │
-├── main.py / bot.py       # Core bot logic
+├── exam_bot.py            # Core bot logic
 ├── requirements.txt       # Project dependencies
 ├── sent_notices.json      # Stores already sent notices
 └── README.md              # Documentation
