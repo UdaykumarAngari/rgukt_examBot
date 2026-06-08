@@ -16,22 +16,21 @@ from dotenv import load_dotenv
 
 #The comments are written at each level for easy understanding and for future reference @udaykumar_angari
 
-# --- Load environment variables early ---
 load_dotenv()
 
-# --- Configuration ---
+# Configuration 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")  # from .env file
 GROUP_CHAT_ID = int(os.environ.get("GROUP_CHAT_ID"))  # from .env file
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
 STORAGE_FILE = "sent_notices.json"
 
-# --- Flask app for keep-alive ---
+# Flask app for keep-alive 
 app = Flask(__name__)
 @app.route("/")
 def home():
-    return "RGUKT Exam Bot is running 🚀"
+    return "RGUKT Exam Bot is running"
 
-# --- Load/Save sent notices ---
+# Load/Save sent notices 
 def load_seen_notices():
     if os.path.exists(STORAGE_FILE):
         try:
@@ -47,21 +46,21 @@ def save_seen_notices(seen_notices):
     with open(STORAGE_FILE, "w") as f:
         json.dump(list(seen_notices), f, indent=2)
 
-# --- Scraping helpers ---
+# Scraping helpers 
 def extract_notice_links(body_div):
     attachment_url = None
     external_url = None
     if not body_div:
         return attachment_url, external_url
 
-    # Attachment: first file with .pdf/.doc/.docx
+    # Attachments: first file with .pdf/.doc/.docx
     for a_tag in body_div.find_all("a", href=True):
         href = a_tag["href"]
         if any(href.lower().endswith(ext) for ext in [".pdf", ".doc", ".docx"]):
             attachment_url = urljoin(NOTICE_URL, href)
             break
 
-    # External URL: "Click Here" or first URL in text
+    # External URL: "Click Here" or first URL in text 
     click_tag = body_div.find("a", string=lambda x: x and "here" in x.lower())
     if click_tag and click_tag.get("href"):
         external_url = urljoin(NOTICE_URL, click_tag.get("href"))
@@ -101,7 +100,7 @@ def scrape_last_10_notices():
 
     return notices[:10]  # latest 10
 
-# --- Telegram message builder ---
+# Telegram message builder  
 def build_message(title, external_url, attachment_url):
     title = escape_markdown(title, version=2)
     attachment_url = escape_markdown(attachment_url, version=2) if attachment_url else None
@@ -114,16 +113,15 @@ def build_message(title, external_url, attachment_url):
     else:
         return f"{title}\nURL: www\.hub\.rgukt\.ac\.in/notice/index"
 
-# --- Bot runner ---
+# Bot runner 
 async def run_bot():
     print("Exam Bot starting...")
     app_instance = Application.builder().token(BOT_TOKEN).build()
     seen_notices = load_seen_notices()
 
-    # --- First run: scrape last 10 notices ---
     last_10 = scrape_last_10_notices()
 
-    # --- PrettyTable for logs ---
+    # PrettyTable for logs 
     table = PrettyTable()
     table.field_names = ["Index", "Title", "URL", "Attachment"]
     for idx, (notice_id, title, external, attachment) in enumerate(reversed(last_10), 1):
@@ -131,7 +129,7 @@ async def run_bot():
     print("Last 10 scraped examination notices:")
     print(table)
 
-    # --- Send last 10 notices ---
+    # Send last 10 notices 
     for notice_id, title, external, attachment in reversed(last_10):
         if notice_id not in seen_notices:
             msg = build_message(title, external, attachment)
@@ -149,7 +147,7 @@ async def run_bot():
     save_seen_notices(seen_notices)
     print("Initial 10 notices processed.")
 
-    # --- Continuous monitoring ---
+    # Continuous monitoring checks every 1 min
     while True:
         try:
             current_notices = scrape_last_10_notices()
@@ -172,7 +170,7 @@ async def run_bot():
             print(f"[ERROR] During monitoring: {e}")
         await asyncio.sleep(60)  # check every 1 minute
 
-# --- Run Flask + Bot concurrently ---
+# Run Flask + Bot concurrently 
 if __name__ == "__main__":
     bot_thread = Thread(target=lambda: asyncio.run(run_bot()), daemon=True)
     bot_thread.start()
