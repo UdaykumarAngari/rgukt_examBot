@@ -19,7 +19,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install Dependencies
         run: |
@@ -28,14 +28,14 @@ jobs:
       - name: Run Bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
         run: |
           python bot.py
 
       - name: Commit Updated JSON
         run: |
           git config user.name "RGUKT Exam Bot"
-          git config user.email "noreply@rgukt-exambot.local"
+          git config user.email "bot@rgukt.local"
 
           git add sent_notices.json
 
