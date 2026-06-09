@@ -8,6 +8,11 @@ from urllib.parse import urljoin
 from telegram.ext import Application
 import json
 from google.oauth2.service_account import Credentials
+
+from flask import Flask
+from threading import Thread
+import time
+
 # Configuration
 
 load_dotenv()
@@ -317,5 +322,48 @@ async def main():
     print("Done")
 
 
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "RGUKT Exam Bot Running"
+
+def start_bot():
+
+    while True:
+
+        try:
+
+            print("\nChecking notices...")
+
+            asyncio.run(main())
+
+        except Exception as e:
+
+            print(
+                f"Bot Error: {e}"
+            )
+
+        time.sleep(300)  # 5 minutes
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+
+    bot_thread = Thread(
+        target=start_bot,
+        daemon=True
+    )
+
+    bot_thread.start()
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            5000
+        )
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
