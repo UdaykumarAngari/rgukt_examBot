@@ -5,3 +5,4 @@ credentials.json
 token.pickle
 rgukt-exam-bot.json
 test_sheet.py
+.sent_notices.json
