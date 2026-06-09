@@ -2,6 +2,6 @@ python-telegram-bot>=20.3
 requests
 beautifulsoup4
 python-dotenv
-gspreadg
+gspread
 google-auth
 flask
