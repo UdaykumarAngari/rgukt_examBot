@@ -1,135 +1,167 @@
-import asyncio
 import os
-import json
+import asyncio
 import requests
+import gspread
+from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-import re
 from telegram.ext import Application
-from telegram.constants import ParseMode
-from telegram.helpers import escape_markdown
-from prettytable import PrettyTable
-from dotenv import load_dotenv
-
-# The comments are written at each level for easy understanding and for future reference @udaykumar_angari
-# if any suggestions please send message from udaykumar-angari.in
+ 
+# Configuration
 
 load_dotenv()
 
-# Configuration
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GROUP_CHAT_ID = int(os.environ.get("GROUP_CHAT_ID"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID"))
+
+SPREADSHEET_ID =  os.getenv("SPREADSHEET_ID")
 
 NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
-STORAGE_FILE = "sent_notices.json"
+
+MAX_STORE = 20
+COMPARE_COUNT = 10
+FETCH_COUNT = 10
+
+KEYWORDS = [
+    "exam",
+    "examination",
+    "external",
+    "externals",
+    "internal",
+    "internals",
+    "mt",
+    "annual",
+    "annual_exam",
+    "rem",
+    "remedial",
+    "lab",
+    "practical",
+    'exams'
+]
+
+# Fetching GOOGLE SHEETS 
 
 
-# Load/Save sent notices
-def load_seen_notices():
-    if os.path.exists(STORAGE_FILE):
-        try:
-            with open(STORAGE_FILE, "r") as f:
-                data = f.read().strip()
-                if data:
-                    return json.loads(data)
-        except (json.JSONDecodeError, FileNotFoundError, ValueError):
-            return []
-    return []
+def get_sheet():
+
+    gc = gspread.service_account(
+        filename="rgukt-exam-bot.json"
+    )
+
+    spreadsheet = gc.open_by_key(
+        SPREADSHEET_ID
+    )
+
+    return spreadsheet.worksheet(
+        "Notices"
+    )
+
+# TELEGRAM 
 
 
-def save_seen_notices(seen_notices):
-    # Keep only latest 50 notices
-    seen_notices = seen_notices[-50:]
+async def send_notice(bot, notice):
 
-    with open(STORAGE_FILE, "w") as f:
-        json.dump(seen_notices, f, indent=2)
+    title, external, attachment = notice.split("|")
+
+    msg = f"{title}\n"
+
+    if external and external != "None":
+        msg += f"\nURL: {external}"
+
+    if attachment and attachment != "None":
+        msg += f"\nAttachment: {attachment}"
+
+    await bot.send_message(
+        chat_id=GROUP_CHAT_ID,
+        text=msg
+    )
 
 
-# Scraping helpers
-def extract_notice_links(body_div):
-    attachment_url = None
-    external_url = None
+# SCRAPER 
+
+
+def is_exam_notice(title):
+
+    title = title.lower()
+
+    for keyword in KEYWORDS:
+        if keyword in title:
+            return True
+
+    return False
+
+
+def extract_links(body_div):
+
+    attachment = None
+    external = None
 
     if not body_div:
-        return attachment_url, external_url
+        return None, None
 
-    # Attachments: first file with .pdf/.doc/.docx
-    for a_tag in body_div.find_all("a", href=True):
-        href = a_tag["href"]
+    for tag in body_div.find_all("a", href=True):
 
-        if any(href.lower().endswith(ext) for ext in [".pdf", ".doc", ".docx"]):
-            attachment_url = urljoin(NOTICE_URL, href)
+        href = tag["href"]
+
+        if href.lower().endswith(
+            (".pdf", ".doc", ".docx")
+        ):
+            attachment = urljoin(
+                NOTICE_URL,
+                href
+            )
             break
 
-    # External URL: "Click Here" or first URL in text
-    click_tag = body_div.find(
+    click_here = body_div.find(
         "a",
         string=lambda x: x and "here" in x.lower()
     )
 
-    if click_tag and click_tag.get("href"):
-        external_url = urljoin(
+    if click_here:
+        external = urljoin(
             NOTICE_URL,
-            click_tag.get("href")
-        )
-    else:
-        text_urls = re.findall(
-            r'https?://\S+',
-            body_div.get_text()
+            click_here.get("href")
         )
 
-        for u in text_urls:
-            if u != attachment_url:
-                external_url = u
-                break
-
-    return attachment_url, external_url
+    return attachment, external
 
 
-def scrape_last_10_notices():
-    try:
-        resp = requests.get(NOTICE_URL, timeout=30)
-        resp.raise_for_status()
+def scrape_latest_notices():
 
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch notices: {e}")
-        return []
+    response = requests.get(
+        NOTICE_URL,
+        timeout=20
+    )
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    response.raise_for_status()
+
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
+
     notices = []
 
-    for header in soup.find_all("div", class_="card-header"):
-        title_tag = header.find("a", class_="card-link")
+    headers = soup.find_all(
+        "div",
+        class_="card-header"
+    )
+
+    for header in headers:
+
+        title_tag = header.find(
+            "a",
+            class_="card-link"
+        )
 
         if not title_tag:
             continue
 
-        title = title_tag.get_text(strip=True)
+        title = title_tag.get_text(
+            strip=True
+        )
 
-        EXAM_KEYWORDS = [
-            "exam",
-            "examination",
-            "internal",
-            "external",
-            "externals",
-            "internals",
-            "mt",
-            "cat",
-            "est",
-            "rem",
-            "remedial",
-            "timetable",
-            "schedule",
-            "seating allotment",
-            "seating",
-            "result",
-            "results",
-            "lab"
-        ]
-
-        title_lower = title.lower()
-
-        if not any(keyword in title_lower for keyword in EXAM_KEYWORDS):
+        if not is_exam_notice(title):
             continue
 
         collapse_div = header.find_next_sibling(
@@ -137,125 +169,145 @@ def scrape_last_10_notices():
             class_="collapse"
         )
 
-        body_div = (
-            collapse_div.find("div", class_="card-body")
-            if collapse_div
-            else None
-        )
+        body_div = None
 
-        attachment_url, external_url = extract_notice_links(body_div)
-
-        notice_id = f"{title}|{external_url}|{attachment_url}"
-
-        notices.append(
-            (
-                notice_id,
-                title,
-                external_url,
-                attachment_url
-            )
-        )
-
-    return notices[:10]
-
-
-# Telegram message builder
-def build_message(title, external_url, attachment_url):
-    title = escape_markdown(title, version=2)
-
-    attachment_url = (
-        escape_markdown(attachment_url, version=2)
-        if attachment_url
-        else None
-    )
-
-    external_url = (
-        escape_markdown(external_url, version=2)
-        if external_url
-        else None
-    )
-
-    if attachment_url and external_url:
-        return (
-            f"{title}\n"
-            f"URL: {external_url}\n"
-            f"Notice Attachment: {attachment_url}"
-        )
-
-    elif external_url or attachment_url:
-        return (
-            f"{title}\n"
-            f"URL: {external_url or attachment_url}"
-        )
-
-    else:
-        return (
-            f"{title}\n"
-            f"URL: www\\.hub\\.rgukt\\.ac\\.in/notice/index"
-        )
-
-
-# Bot runner
-async def run_bot():
-    print("Exam Bot starting...")
-
-    app_instance = Application.builder().token(BOT_TOKEN).build()
-
-    seen_notices = load_seen_notices()
-
-    current_notices = scrape_last_10_notices()
-
-    # table for logs
-    table = PrettyTable()
-    table.field_names = ["Index", "Title", "URL", "Attachment"]
-
-    for idx, (notice_id, title, external, attachment) in enumerate(
-        reversed(current_notices),
-        1
-    ):
-        table.add_row([
-            idx,
-            title,
-            external or "-",
-            attachment or "-"
-        ])
-
-    print("Last 10 scraped examination notices:")
-    print(table)
-
-    sent_count = 0
-
-    for notice_id, title, external, attachment in reversed(current_notices):
-
-        if notice_id not in seen_notices:
-
-            msg = build_message(
-                title,
-                external,
-                attachment
+        if collapse_div:
+            body_div = collapse_div.find(
+                "div",
+                class_="card-body"
             )
 
-            print("[DEBUG] Message ready to send:\n", msg)
+        attachment, external = extract_links(
+            body_div
+        )
 
-            try:
-                await app_instance.bot.send_message(
-                    chat_id=GROUP_CHAT_ID,
-                    text=msg,
-                    parse_mode=ParseMode.MARKDOWN_V2
-                )
+        notice = (
+            f"{title}|"
+            f"{external}|"
+            f"{attachment}"
+        )
 
-                print(f"[SUCCESS] Sent: {title}")
-                sent_count += 1
+        notices.append(notice)
 
-            except Exception as e:
-                print(f"[ERROR] Failed to send message: {e}")
+    return notices[:FETCH_COUNT]
 
-            seen_notices.append(notice_id)
 
-    save_seen_notices(seen_notices)
+# Google Sheets Storage 
 
-    print(f"Completed. New notices sent: {sent_count}")
+
+def get_last_five_from_sheet():
+
+    sheet = get_sheet()
+
+    values = sheet.col_values(1)
+
+    if not values:
+        return []
+
+    if values[0].lower() == "notice":
+        values = values[1:]
+
+    return values[:COMPARE_COUNT]
+
+
+def save_notices(new_notices):
+
+    sheet = get_sheet()
+
+    try:
+        existing = sheet.col_values(1)
+
+        if existing and existing[0].lower() == "notice":
+            existing = existing[1:]
+
+    except Exception:
+        existing = []
+
+    merged = []
+    seen = set()
+
+    for notice in new_notices + existing:
+
+        if notice not in seen:
+
+            merged.append(notice)
+
+            seen.add(notice)
+
+    merged = merged[:MAX_STORE]
+
+    data = [["notice"]]
+
+    for notice in merged:
+        data.append([notice])
+
+    sheet.clear()
+
+    sheet.update(
+        "A1",
+        data
+    )
+
+    print(
+        f"Saved {len(merged)} notices"
+    )
+
+
+# MAIN 
+
+
+async def main():
+
+    print("\nFetching RGUKT notices...")
+
+    app = (
+        Application
+        .builder()
+        .token(BOT_TOKEN)
+        .build()
+    )
+
+    latest_notices = scrape_latest_notices()
+
+    sheet_notices = get_last_five_from_sheet()
+
+    new_notices = []
+
+    for notice in latest_notices:
+
+        if notice not in sheet_notices:
+            new_notices.append(notice)
+
+    print(
+        f"Latest fetched : {len(latest_notices)}"
+    )
+
+    print(
+        f"Compared against : {len(sheet_notices)}"
+    )
+
+    print(
+        f"New notices : {len(new_notices)}"
+    )
+
+    for notice in reversed(new_notices):
+
+        print(
+            "Sending:",
+            notice.split("|")[0]
+        )
+
+        await send_notice(
+            app.bot,
+            notice
+        )
+
+    save_notices(
+        latest_notices
+    )
+
+    print("Done")
 
 
 if __name__ == "__main__":
-    asyncio.run(run_bot())
+    asyncio.run(main())

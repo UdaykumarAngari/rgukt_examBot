@@ -1,3 +1,7 @@
 .Testing/
 .venv/
 .env
+credentials.json
+token.pickle
+rgukt-exam-bot.json
+test_sheet.py
