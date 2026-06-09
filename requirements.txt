@@ -1,6 +1,6 @@
-python-telegram-bot==20.3
+python-telegram-bot
 requests
 beautifulsoup4
-flask
-prettytable
+gspread
+google-auth
 python-dotenv
