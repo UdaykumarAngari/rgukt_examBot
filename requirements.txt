@@ -5,3 +5,4 @@ python-dotenv
 gspread
 google-auth
 flask
+gunicorn
