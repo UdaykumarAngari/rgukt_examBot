@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from telegram.ext import Application
- 
+import json
+from google.oauth2.service_account import Credentials
 # Configuration
 
 load_dotenv()
@@ -39,14 +40,21 @@ KEYWORDS = [
     'exams'
 ]
 
-# Fetching GOOGLE SHEETS 
-
-
+# Fetching GOOGLE SHEETS credentials from environment variable and authorizing gspread
 def get_sheet():
 
-    gc = gspread.service_account(
-        filename="rgukt-exam-bot.json"
+    creds_info = json.loads(
+        os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
     )
+
+    creds = Credentials.from_service_account_info(
+        creds_info,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets"
+        ]
+    )
+
+    gc = gspread.authorize(creds)
 
     spreadsheet = gc.open_by_key(
         SPREADSHEET_ID
