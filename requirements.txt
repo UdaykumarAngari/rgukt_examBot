@@ -1,8 +1,8 @@
-python-telegram-bot==20.3
+python-telegram-bot>=20.3
 requests
 beautifulsoup4
 python-dotenv
-gspread
+gspreadg
 google-auth
 flask
 gunicorn
