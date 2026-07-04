@@ -13,8 +13,6 @@ from flask import Flask
 from threading import Thread
 import time
 
-# Configuration
-
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -45,7 +43,6 @@ KEYWORDS = [
     'exams'
 ]
 
-# Fetching GOOGLE SHEETS credentials from environment variable and authorizing gspread
 def get_sheet():
 
     creds_info = json.loads(
@@ -73,13 +70,14 @@ def get_sheet():
 
 
 async def send_notice(bot, notice):
-
     title, external, attachment = notice.split("|")
 
     msg = f"{title}\n"
 
     if external and external != "None":
         msg += f"\nURL: {external}"
+    else:
+        msg += f"\nURL: {NOTICE_URL}"
 
     if attachment and attachment != "None":
         msg += f"\nAttachment: {attachment}"
@@ -88,10 +86,6 @@ async def send_notice(bot, notice):
         chat_id=GROUP_CHAT_ID,
         text=msg
     )
-
-
-# SCRAPER 
-
 
 def is_exam_notice(title):
 
@@ -102,7 +96,6 @@ def is_exam_notice(title):
             return True
 
     return False
-
 
 def extract_links(body_div):
 
@@ -137,7 +130,6 @@ def extract_links(body_div):
         )
 
     return attachment, external
-
 
 def scrape_latest_notices():
 
@@ -204,10 +196,6 @@ def scrape_latest_notices():
 
     return notices[:FETCH_COUNT]
 
-
-# Google Sheets Storage 
-
-
 def get_last_five_from_sheet():
 
     sheet = get_sheet()
@@ -264,10 +252,6 @@ def save_notices(new_notices):
     print(
         f"Saved {len(merged)} notices"
     )
-
-
-# MAIN 
-
 
 async def main():
 
@@ -344,7 +328,7 @@ def start_bot():
                 f"Bot Error: {e}"
             )
 
-        time.sleep(300)  # 5 minutes
+        time.sleep(300)  
 
 
 if __name__ == "__main__":
