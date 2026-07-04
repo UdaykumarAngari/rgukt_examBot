@@ -69,7 +69,7 @@ def get_sheet():
 async def send_notice(bot, notice):
     title, external, attachment = notice.split("|")
 
-    msg = f"{title}"
+    msg = f"\n{title}"
 
     if external and external != "None":
         msg += f"URL: {external}"
@@ -77,7 +77,7 @@ async def send_notice(bot, notice):
         msg += f"URL: {NOTICE_URL}"
 
     if attachment and attachment != "None":
-        msg += f"Attachment: {attachment}"
+        msg += f"\nAttachment: {attachment}"
 
     await bot.send_message(
         chat_id=GROUP_CHAT_ID,
