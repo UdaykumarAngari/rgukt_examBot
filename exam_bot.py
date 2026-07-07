@@ -72,9 +72,9 @@ async def send_notice(bot, notice):
     msg = f"\n{title}"
 
     if external and external != "None":
-        msg += f"URL: {external}"
+        msg += f"\nURL: {external}"
     else:
-        msg += f"URL: {NOTICE_URL}"
+        msg += f"\nURL: {NOTICE_URL}"
 
     if attachment and attachment != "None":
         msg += f"\nAttachment: {attachment}"
