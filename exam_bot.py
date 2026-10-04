@@ -28,19 +28,19 @@ FETCH_COUNT = 10
 
 KEYWORDS = [
     "exam",
+    "exams"
     "examination",
+    "examinations",
     "external",
     "externals",
     "internal",
     "internals",
     "mt",
-    "annual",
     "annual_exam",
     "rem",
     "remedial",
     "lab",
-    "practical",
-    'exams'
+    "practical"  
 ]
 
 def get_sheet():
