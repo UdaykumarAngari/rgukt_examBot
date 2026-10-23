@@ -242,8 +242,8 @@ def save_notices(new_notices):
     sheet.clear()
 
     sheet.update(
-        range_name="A1",
-        values=data
+        "A1",
+        data
     )
 
     print(
