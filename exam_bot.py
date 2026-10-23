@@ -28,7 +28,7 @@ FETCH_COUNT = 10
 
 KEYWORDS = [
     "exam",
-    "exams"
+    "exams",
     "examination",
     "examinations",
     "external",
