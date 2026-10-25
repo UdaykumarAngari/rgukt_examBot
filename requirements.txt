@@ -5,3 +5,4 @@ python-dotenv
 gspread==6.2.1
 google-auth
 flask
+

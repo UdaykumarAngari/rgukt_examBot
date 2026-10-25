@@ -20,11 +20,11 @@ GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID"))
 
 SPREADSHEET_ID =  os.getenv("SPREADSHEET_ID")
 
-NOTICE_URL = "https://hub.rgukt.ac.in/hub/notice/index"
+NOTICE_URL = os.getenv("HUB_NOTICE_URL", "https://hub2.rgukt.ac.in/hub/notice/index")
 
-MAX_STORE = 20
-COMPARE_COUNT = 10
-FETCH_COUNT = 10
+MAX_STORE = 10
+COMPARE_COUNT = 5
+FETCH_COUNT = 5
 
 KEYWORDS = [
     "exam",
@@ -66,8 +66,13 @@ def get_sheet():
         "Notices"
     )
 
+
 async def send_notice(bot, notice):
-    title, external, attachment = notice.split("|")
+    parts = notice.split("|", 2)
+
+    title = parts[0]
+    external = parts[1] if len(parts) > 1 else None
+    attachment = parts[2] if len(parts) > 2 else None
 
     msg = f"\n{title}"
 
@@ -94,104 +99,103 @@ def is_exam_notice(title):
 
     return False
 
-def extract_links(body_div):
 
+def extract_links(body_div, base_url=NOTICE_URL):
     attachment = None
     external = None
 
-    if not body_div:
-        return None, None
+    if body_div is None:
+        return attachment, external
 
     for tag in body_div.find_all("a", href=True):
+        href = tag["href"].strip()
+        text = tag.get_text(" ", strip=True).lower()
 
-        href = tag["href"]
+        if not href:
+            continue
 
-        if href.lower().endswith(
-            (".pdf", ".doc", ".docx")
-        ):
-            attachment = urljoin(
-                NOTICE_URL,
-                href
+        full_url = urljoin(base_url, href)
+
+        if (
+            text in {"download attachment", "download"}
+            or href.lower().split("?")[0].endswith(
+                (".pdf", ".doc", ".docx")
             )
-            break
+        ):
+            attachment = full_url
 
-    click_here = body_div.find(
-        "a",
-        string=lambda x: x and "here" in x.lower()
-    )
-
-    if click_here:
-        external = urljoin(
-            NOTICE_URL,
-            click_here.get("href")
-        )
+        elif "here" in text or "view link" in text:
+            external = full_url
 
     return attachment, external
 
-def scrape_latest_notices():
 
+
+def scrape_latest_notices():
     response = requests.get(
         NOTICE_URL,
-        timeout=20
+        timeout=30,
+        headers={"User-Agent": "Mozilla/5.0"}
     )
-
     response.raise_for_status()
 
-    soup = BeautifulSoup(
-        response.text,
-        "html.parser"
-    )
+    soup = BeautifulSoup(response.text, "html.parser")
+    items = soup.select(".notice-item")
+
+    if not items:
+        raise RuntimeError(
+            "No notice items found. Check portal HTML."
+        )
 
     notices = []
 
-    headers = soup.find_all(
-        "div",
-        class_="card-header"
-    )
+    for item in items:
+        header = item.select_one(".accordion-header")
 
-    for header in headers:
-
-        title_tag = header.find(
-            "a",
-            class_="card-link"
-        )
-
-        if not title_tag:
+        if header is None:
             continue
+ 
+        title_tag = header.select_one(".notice-subject")
 
-        title = title_tag.get_text(
-            strip=True
-        )
-
-        if not is_exam_notice(title):
-            continue
-
-        collapse_div = header.find_next_sibling(
-            "div",
-            class_="collapse"
-        )
-
-        body_div = None
-
-        if collapse_div:
-            body_div = collapse_div.find(
-                "div",
-                class_="card-body"
+        if title_tag:
+            title = title_tag.get_text(" ", strip=True)
+        else:
+             
+            header_copy = BeautifulSoup(
+                str(header), "html.parser"
             )
 
+            for element in header_copy.select(
+                ".notice-new, .notice-date, .notice-ico, i"
+            ):
+                element.decompose()
+
+            title = header_copy.get_text(" ", strip=True)
+
+        if not title or not is_exam_notice(title):
+            continue
+
+        body = item.select_one(
+            ".accordion-collapse .accordion-body"
+        )
+
+        if body is None:
+            body = item.select_one(".notice-body")
+
         attachment, external = extract_links(
-            body_div
+            body, response.url
         )
 
-        notice = (
-            f"{title}|"
-            f"{external}|"
-            f"{attachment}"
+        notices.append(
+            f"{title}|{external}|{attachment}"
         )
 
-        notices.append(notice)
+    print(f"Portal items found: {len(items)}")
+    print(f"Matching exam notices: {len(notices)}")
 
     return notices[:FETCH_COUNT]
+
+
 
 def get_last_five_from_sheet():
 
@@ -239,10 +243,8 @@ def save_notices(new_notices):
     for notice in merged:
         data.append([notice])
 
-    sheet.clear()
-
     sheet.update(
-        range_name="A1",
+        range_name=f"A1:A{len(data)}",
         values=data
     )
 
