@@ -20,7 +20,7 @@ GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID"))
 
 SPREADSHEET_ID =  os.getenv("SPREADSHEET_ID")
 
-NOTICE_URL = os.getenv("HUB_NOTICE_URL", "https://hub2.rgukt.ac.in/hub/notice/index")
+NOTICE_URL = os.getenv("HUB_NOTICE_URL", "https://hub.rgukt.ac.in/hub/notice/index")
 
 MAX_STORE = 10
 COMPARE_COUNT = 5
