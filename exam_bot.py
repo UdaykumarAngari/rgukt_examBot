@@ -327,7 +327,7 @@ def start_bot():
                 f"Bot Error: {e}"
             )
 
-        time.sleep(300)  
+        time.sleep(30)  
 
 
 if __name__ == "__main__":
